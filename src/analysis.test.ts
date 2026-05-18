@@ -13,7 +13,7 @@ describe("analyzeSupplement", () => {
     });
 
     expect(result.conclusion).toContain("제품 기준");
-    expect(result.tags).toContain("EPA+DHA 확인");
+    expect(result.tags).toContain("EPA+DHA 확인 필요");
     expect(result.sections.dose).toContain("라벨");
     expect(result.sections.interactions).toContain("전문가 확인");
     expect(result.sections.timing).toContain("식사");
@@ -67,6 +67,52 @@ describe("analyzeSupplement", () => {
     expect(result.sections.dose).toContain("EPA 400 mg + DHA 200 mg");
     expect(result.sections.interactions).toContain("warfarin");
     expect(result.sections.evidence).toContain("NIH ODS");
+  });
+
+  it("changes omega-3 dose calculations when the user changes the serving scenario", () => {
+    const result = analyzeSupplement({
+      mode: "product",
+      primaryInput: "오메가3",
+      productDetails: "Supplement Facts: Fish Oil 1000 mg, EPA 300 mg, DHA 150 mg per softgel.",
+      goal: "혈행",
+      currentSupplements: "",
+      currentMedicines: "",
+      servingScenario: "하루 2캡슐",
+    });
+
+    expect(result.conclusion).toContain("EPA+DHA 900 mg");
+    expect(result.sections.dose).toContain("EPA 600 mg + DHA 300 mg");
+    expect(result.sections.dose).toContain("하루 2캡슐");
+  });
+
+  it("reflects low omega-3 amounts from the pasted label instead of using example values", () => {
+    const result = analyzeSupplement({
+      mode: "product",
+      primaryInput: "저함량 오메가3",
+      productDetails: "EPA 90 mg, DHA 60 mg per capsule",
+      goal: "눈 건조감",
+      currentSupplements: "",
+      currentMedicines: "",
+    });
+
+    expect(result.conclusion).toContain("EPA+DHA 150 mg");
+    expect(result.sections.parsedFacts).toContain("EPA 90 mg");
+    expect(result.sections.parsedFacts).toContain("DHA 60 mg");
+    expect(result.sections.dose).toContain("EPA 90 mg + DHA 60 mg");
+    expect(result.sections.dose).not.toContain("EPA 400 mg");
+  });
+
+  it("does not duplicate the purpose word when the user leaves purpose blank", () => {
+    const result = analyzeSupplement({
+      mode: "product",
+      primaryInput: "저함량 오메가3",
+      productDetails: "EPA 90 mg, DHA 60 mg per capsule",
+      goal: "",
+      currentSupplements: "",
+      currentMedicines: "",
+    });
+
+    expect(result.conclusion).not.toContain("목적 목적");
   });
 
   it("flags lutein marketing as weak for generic eye fatigue while recognizing AREDS2 context", () => {

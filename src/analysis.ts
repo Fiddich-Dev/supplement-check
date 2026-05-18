@@ -27,6 +27,7 @@ export type AnalysisResult = {
   showServingScenario: boolean;
   sections: {
     explanation: string;
+    parsedFacts: string;
     dose: string;
     interactions: string;
     timing: string;
@@ -41,6 +42,11 @@ const formatGoal = (input: AnalyzeInput) => {
   if (hasText(input.goal)) return input.goal.trim();
   if (input.mode === "goal" && hasText(input.primaryInput)) return input.primaryInput.trim();
   return "입력한 목적";
+};
+
+const formatPurposeContext = (input: AnalyzeInput) => {
+  const goal = formatGoal(input);
+  return goal === "입력한 목적" ? goal : `${goal} 목적`;
 };
 
 const withTopicParticle = (text: string) => {
@@ -72,20 +78,22 @@ function analyzeProduct(input: AnalyzeInput): AnalysisResult {
 }
 
 function analyzeProductWithoutFacts(input: AnalyzeInput): AnalysisResult {
-  const goal = formatGoal(input);
+  const purpose = formatPurposeContext(input);
   const hasMedicine = hasText(input.currentMedicines);
   const hasSupplements = hasText(input.currentSupplements);
   const serving = input.servingScenario || "라벨 권장량";
 
   return {
     title: "제품 링크 체크 결과",
-    conclusion: `제품 기준으로 보면 ${goal} 목적에는 성분표 보완 입력이 필요합니다.`,
+    conclusion: `제품 기준으로 보면 ${purpose}에는 성분표 보완 입력이 필요합니다.`,
     tags: ["성분표 필요", "제품 기준 판단", "라벨 기준", "섭취 시점 안내"],
     confidence: "낮음",
     showServingScenario: true,
     sections: {
       explanation:
         "상품 링크만으로는 브라우저 보안과 쇼핑몰 동적 렌더링 때문에 안정적인 성분표 추출이 어렵습니다. 제품명은 NIH DSLD 라벨 DB로 조회를 시도하고, 성분표나 상품 설명을 붙여넣으면 실제 룰 기반 판단을 수행합니다.",
+      parsedFacts:
+        "아직 성분표에서 읽은 함량이 없습니다. 제품 페이지의 Supplement Facts, 영양·기능정보, 원재료/성분표 텍스트를 붙여넣어 주세요.",
       dose:
         `${serving} 기준으로 판단하려면 Supplement Facts 또는 성분표 텍스트가 필요합니다. 오메가3는 EPA+DHA, 비타민류는 1일 섭취량과 상한을 봅니다.`,
       interactions:
@@ -109,31 +117,38 @@ function analyzeProductWithoutFacts(input: AnalyzeInput): AnalysisResult {
 
 function analyzeOmega3(input: AnalyzeInput, facts: ParsedProductFacts): AnalysisResult {
   const goal = formatGoal(input);
+  const purpose = formatPurposeContext(input);
+  const serving = input.servingScenario || "라벨 권장량";
+  const multiplier = servingMultiplier(serving);
   const epaMg = amountToMg(facts.epa);
   const dhaMg = amountToMg(facts.dha);
-  const combined = epaMg !== undefined && dhaMg !== undefined ? epaMg + dhaMg : undefined;
+  const adjustedEpa = epaMg !== undefined ? epaMg * multiplier : undefined;
+  const adjustedDha = dhaMg !== undefined ? dhaMg * multiplier : undefined;
+  const combined = adjustedEpa !== undefined && adjustedDha !== undefined ? adjustedEpa + adjustedDha : undefined;
   const hasAnticoagulant = containsAny(input.currentMedicines, ["warfarin", "와파린", "항응고", "항혈소판", "aspirin", "아스피린"]);
+  const hasCombinedDose = combined !== undefined;
 
   return {
     title: "제품 링크 체크 결과",
     conclusion:
-      combined !== undefined
-        ? `EPA+DHA ${formatMg(combined)} 확인됨. ${goal} 목적은 제품 함량과 근거 맥락을 나눠 봐야 합니다.`
-        : `제품 기준으로 보면 ${goal} 목적의 오메가3 제품이지만 EPA+DHA 함량이 명확하지 않습니다.`,
+      hasCombinedDose
+        ? `EPA+DHA ${formatMg(combined)} 확인됨. ${purpose}은 제품 함량과 근거 맥락을 나눠 봐야 합니다.`
+        : `제품 기준으로 보면 ${purpose}의 오메가3 제품이지만 EPA+DHA 함량이 명확하지 않습니다.`,
     tags: [
-      "유효 함량 계산됨",
-      "EPA+DHA 확인",
+      hasCombinedDose ? "유효 함량 계산됨" : "성분표 필요",
+      hasCombinedDose ? "EPA+DHA 확인" : "EPA+DHA 확인 필요",
       goal.includes("눈") ? "목적 근거 확인" : "목적별 근거 확인",
       hasAnticoagulant ? "상호작용 주의" : "섭취 시점 안내",
     ],
-    confidence: combined !== undefined ? "보통" : "낮음",
+    confidence: hasCombinedDose ? "보통" : "낮음",
     showServingScenario: true,
     sections: {
       explanation:
         "오메가3는 총 어유량보다 EPA와 DHA 합산량을 봐야 합니다. 혈중 중성지방 목적과 일반 건강·눈 관련 목적은 필요한 함량과 근거 맥락이 다릅니다.",
+      parsedFacts: summarizeFacts(facts),
       dose:
-        combined !== undefined
-          ? `라벨 기준 EPA ${formatAmount(facts.epa)} + DHA ${formatAmount(facts.dha)} = EPA+DHA ${formatMg(combined)}입니다. 총 어유량만 크게 표시된 제품보다 실제 유효 성분량이 더 중요합니다.`
+        hasCombinedDose
+          ? `${serving} 기준 EPA ${formatMg(adjustedEpa!)} + DHA ${formatMg(adjustedDha!)} = EPA+DHA ${formatMg(combined)}입니다. 라벨 원문 기준은 EPA ${formatAmount(facts.epa)}, DHA ${formatAmount(facts.dha)}입니다. 총 어유량만 크게 표시된 제품보다 실제 유효 성분량이 더 중요합니다.`
           : "라벨에서 EPA와 DHA가 따로 표시되지 않아 유효 함량을 계산할 수 없습니다. 성분표에서 EPA, DHA 항목을 확인해야 합니다.",
       interactions: hasAnticoagulant
         ? `현재 먹는 약에 ${input.currentMedicines}가 입력되어 있습니다. NIH ODS는 fish oil이 warfarin 등과 관련해 응고 시간 논의가 있어 전문가 확인이 필요하다고 설명합니다.`
@@ -168,6 +183,7 @@ function analyzeLutein(input: AnalyzeInput, facts: ParsedProductFacts): Analysis
     sections: {
       explanation:
         "루테인과 지아잔틴은 주로 연령 관련 황반변성 진행 억제 맥락에서 다뤄집니다. 일반적인 사무직 눈 피로나 스마트폰 눈 피로 광고는 근거 맥락이 다를 수 있습니다.",
+      parsedFacts: summarizeFacts(facts),
       dose:
         `파싱된 함량은 루테인 ${formatAmount(luteinAmount)}${zeaxanthin ? `, 지아잔틴 ${formatAmount(zeaxanthin)}` : ""}입니다. National Eye Institute의 AREDS2 조합은 루테인 10 mg, 지아잔틴 2 mg 맥락으로 제시됩니다.`,
       interactions: "일반적인 의약품 상호작용 단정은 하지 않습니다. 눈 질환이 있거나 치료 중이면 안과 전문의와 상의하는 편이 안전합니다.",
@@ -185,7 +201,10 @@ function analyzeLutein(input: AnalyzeInput, facts: ParsedProductFacts): Analysis
 
 function analyzeVitaminD(input: AnalyzeInput, facts: ParsedProductFacts): AnalysisResult {
   const vitaminD = facts.ingredients.find((item) => item.id === "vitaminD");
-  const amountIu = amountToIu(vitaminD?.amount);
+  const serving = input.servingScenario || "라벨 권장량";
+  const multiplier = servingMultiplier(serving);
+  const rawAmountIu = amountToIu(vitaminD?.amount);
+  const amountIu = rawAmountIu !== undefined ? rawAmountIu * multiplier : undefined;
   const supplementOverlap = containsAny(input.currentSupplements, ["vitamin d", "비타민 d", "비타민d"]);
   const highDose = amountIu !== undefined && amountIu >= 4000;
 
@@ -200,9 +219,10 @@ function analyzeVitaminD(input: AnalyzeInput, facts: ParsedProductFacts): Analys
     sections: {
       explanation:
         "비타민 D는 단일 제품 함량보다 식품, 멀티비타민, 별도 비타민 D 제품을 합친 총 섭취량이 중요합니다.",
+      parsedFacts: summarizeFacts(facts),
       dose:
         amountIu !== undefined
-          ? `라벨 기준 비타민 D ${formatIu(amountIu)}입니다. NIH ODS가 제시하는 성인 상한은 총 섭취량 기준 100 mcg, 4,000 IU입니다.`
+          ? `${serving} 기준 비타민 D ${formatIu(amountIu)}입니다. NIH ODS가 제시하는 성인 상한은 총 섭취량 기준 100 mcg, 4,000 IU입니다.`
           : "비타민 D 함량 단위를 읽지 못했습니다. IU 또는 mcg 단위의 라벨 정보를 확인해야 합니다.",
       interactions: supplementOverlap
         ? `현재 먹는 영양제에 비타민 D가 포함되어 있어 중복 섭취 가능성이 있습니다. 총량이 4,000 IU에 가까운지 확인해야 합니다.`
@@ -236,6 +256,7 @@ function analyzeKnownIngredient(input: AnalyzeInput, facts: ParsedProductFacts):
     showServingScenario: true,
     sections: {
       explanation: rule.evidenceSummary,
+      parsedFacts: summarizeFacts(facts),
       dose: `${rule.displayName} 함량은 ${formatAmount(ingredient.amount)}로 파싱되었습니다. 제품 라벨의 1일 섭취량 기준인지 확인해야 합니다.`,
       interactions: interactionHit
         ? `${interactionHit} 관련 입력이 있어 전문가 확인이 필요합니다.`
@@ -267,6 +288,8 @@ function analyzeGoal(input: AnalyzeInput): AnalysisResult {
     sections: {
       explanation:
         `이 목적에는 ${names} 같은 성분이 자주 마케팅됩니다. 하지만 연구된 목적과 광고되는 목적이 다를 수 있어 성분명만으로 구매 판단을 하면 안 됩니다.`,
+      parsedFacts:
+        "목적 상담은 아직 제품 성분표를 읽지 않습니다. 제품을 고르면 제품 링크 체크에서 실제 함량을 계산합니다.",
       dose:
         "제품을 고르기 전 단계라 구체적인 함량 판단은 하지 않습니다. 제품을 선택하면 라벨 기준 함량과 실제 섭취량을 다시 계산합니다.",
       interactions:
@@ -300,6 +323,7 @@ function analyzeAd(input: AnalyzeInput): AnalysisResult {
         mentioned
           ? `광고 문구에서 ${mentioned} 성분이 감지되었습니다. 맞는 말처럼 보여도 연구 대상, 섭취량, 사용자 목적이 빠져 있으면 구매 근거로는 약합니다.`
           : "광고에는 맞는 말처럼 보이지만 실제 구매 판단에는 약한 정보가 많습니다. 연구 대상, 섭취량, 사용자 목적이 빠져 있으면 결론을 낮춰 봐야 합니다.",
+      parsedFacts: facts.ingredients.length > 0 ? summarizeFacts(facts) : "광고 문구에서 읽은 성분/함량이 없습니다.",
       dose:
         facts.ingredients.length > 0
           ? `감지된 함량: ${summarizeFacts(facts)}. 광고 문구만으로 부족하면 제품 성분표가 필요합니다.`
@@ -330,7 +354,21 @@ function findAmountByAlias(facts: ParsedProductFacts, displayName: string) {
 
 function summarizeFacts(facts: ParsedProductFacts) {
   if (facts.ingredients.length === 0) return "감지된 성분 없음";
+  if (facts.epa || facts.dha) {
+    return [
+      facts.epa ? `EPA ${formatAmount(facts.epa)}` : undefined,
+      facts.dha ? `DHA ${formatAmount(facts.dha)}` : undefined,
+    ]
+      .filter(Boolean)
+      .join(", ");
+  }
   return facts.ingredients.map((item) => `${item.name} ${formatAmount(item.amount)}`).join(", ");
+}
+
+function servingMultiplier(servingScenario: string) {
+  if (servingScenario.includes("2캡슐") || servingScenario.includes("두")) return 2;
+  if (servingScenario.includes("이틀") || servingScenario.includes("격일")) return 0.5;
+  return 1;
 }
 
 function formatMg(value: number) {

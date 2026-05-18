@@ -150,10 +150,10 @@ function App() {
       <section className="hero" aria-labelledby="page-title">
         <div>
           <p className="eyebrow">Supplement Check MVP</p>
-          <h1 id="page-title">건강 기능식품, 사기 전에 판단하세요.</h1>
+          <h1 id="page-title">사기 전에 성분표부터 확인하세요.</h1>
           <p className="hero-copy">
-            제품명, 링크, 성분표, 광고 문구를 넣으면 함량과 근거, 중복 섭취, 섭취 시점을
-            한 화면에서 확인합니다.
+            제품명이나 링크를 넣고 성분표를 붙여넣으면 실제 함량, 중복 섭취,
+            섭취 시점까지 한 화면에서 확인합니다.
           </p>
         </div>
         <div className="status-pill">사용자 테스트용 프로토타입</div>
@@ -181,7 +181,7 @@ function App() {
               <p>{activeMode.description}</p>
             </div>
             <button className="ghost-button" onClick={loadExample} type="button">
-              예시 입력
+              샘플 채우기
             </button>
           </div>
 
@@ -219,7 +219,7 @@ function App() {
                 <span>성분표/상품 설명</span>
                 <textarea
                   onChange={(event) => setProductDetails(event.target.value)}
-                  placeholder="예: Fish Oil 1000 mg, EPA 400 mg, DHA 200 mg. 1 softgel daily."
+                  placeholder="상품 페이지의 Supplement Facts, 영양·기능정보, 성분표를 그대로 붙여넣으세요. 예: EPA 300 mg, DHA 150 mg per capsule."
                   rows={6}
                   value={productDetails}
                 />
@@ -279,6 +279,7 @@ function App() {
             </div>
 
             <ResultSection title="쉬운 설명" body={result.sections.explanation} />
+            <ResultSection title="읽은 성분" body={result.sections.parsedFacts} />
             <ResultSection title="함량과 섭취량" body={result.sections.dose} />
 
             {result.showServingScenario && (
