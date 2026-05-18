@@ -113,13 +113,56 @@ function App() {
     setExpertOpen(false);
   };
 
-  const lookupDsld = async () => {
+  const readProductInfo = async () => {
     if (!primaryInput.trim()) {
       setLookupStatus("먼저 제품명이나 링크를 입력해 주세요.");
       return;
     }
 
-    setLookupStatus("NIH 라벨 DB에서 비슷한 제품을 찾는 중입니다.");
+    if (isHttpUrl(primaryInput)) {
+      setLookupStatus("상품 페이지를 읽고 성분표 후보를 찾는 중입니다.");
+
+      try {
+        const response = await fetch("/api/parse-product", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: primaryInput }),
+        });
+        const data = (await response.json()) as {
+          ok?: boolean;
+          text?: string;
+          source?: string;
+          warnings?: string[];
+          error?: string;
+        };
+
+        if (!response.ok || !data.ok || !data.text) {
+          setLookupStatus(data.error ?? "상품 페이지를 충분히 읽지 못했습니다. 성분표를 직접 붙여넣어 주세요.");
+          return;
+        }
+
+        setProductDetails((current) =>
+          [
+            current,
+            `${data.source ?? "상품 페이지"}에서 읽은 정보:\n${data.text}${
+              data.warnings?.length ? `\n주의: ${data.warnings.join(" ")}` : ""
+            }`,
+          ]
+            .filter((value) => value.trim())
+            .join("\n\n"),
+        );
+        setLookupStatus(
+          data.warnings?.length
+            ? "페이지가 일부 차단되어 읽은 정보가 제한적입니다. 성분표를 붙이면 정확도가 올라갑니다."
+            : "상품 페이지에서 읽은 정보를 성분표 입력칸에 추가했습니다.",
+        );
+      } catch {
+        setLookupStatus("상품 페이지를 읽지 못했습니다. 성분표나 상품 설명을 직접 붙여넣어 주세요.");
+      }
+      return;
+    }
+
+    setLookupStatus("제품명으로 NIH 라벨 DB 후보를 찾는 중입니다.");
 
     try {
       const response = await fetch(buildDsldSearchUrl(primaryInput), {
@@ -132,7 +175,7 @@ function App() {
       const summaries = normalizeDsldHits(data.hits ?? []);
 
       if (summaries.length === 0) {
-        setLookupStatus("비슷한 라벨을 찾지 못했습니다. 성분표를 직접 붙여넣어 주세요.");
+        setLookupStatus("비슷한 라벨 후보를 찾지 못했습니다. 성분표를 직접 붙여넣어 주세요.");
         return;
       }
 
@@ -209,8 +252,8 @@ function App() {
           {mode === "product" && (
             <>
               <div className="lookup-row">
-                <button className="ghost-button" onClick={lookupDsld} type="button">
-                  NIH 라벨 DB 조회
+                <button className="ghost-button" onClick={readProductInfo} type="button">
+                  제품 정보 읽기
                 </button>
                 {lookupStatus && <p>{lookupStatus}</p>}
               </div>
@@ -336,6 +379,10 @@ function ResultSection({ title, body }: { title: string; body: string }) {
       <p>{body}</p>
     </article>
   );
+}
+
+function isHttpUrl(value: string) {
+  return /^https?:\/\//i.test(value.trim());
 }
 
 export default App;
