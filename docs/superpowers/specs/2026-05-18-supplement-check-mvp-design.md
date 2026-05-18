@@ -32,6 +32,7 @@ The app should answer:
 - Is the dose meaningful at the labeled serving size?
 - Are the advertising claims useful, overstated, or missing context?
 - Are there overlapping ingredients or interaction risks with what I already take?
+- When does this product make the most sense to take?
 - What evidence is this judgment based on?
 
 ## Entry Points
@@ -127,6 +128,18 @@ If the dose appears low, high, or close to an upper limit, the app exposes a ser
 
 The app must not encourage arbitrary dose increases. For nutrients with overdose risk, it should show upper-limit and overlap warnings.
 
+### Intake Timing
+
+After the app reaches a product judgment, it should provide basic intake timing guidance when the product type supports it.
+
+Examples:
+
+- Fat-soluble vitamins or carotenoids may make more sense with a meal that contains fat.
+- Magnesium, sleep-related products, or stimulant-like ingredients may have time-of-day considerations.
+- Iron, calcium, caffeine, fiber, and some medicines can create spacing concerns.
+
+Timing guidance should be practical and conservative. It should not claim a precise schedule unless the evidence or label supports it. If medicines are involved, the app should frame timing as a check-with-professional item when needed.
+
 ### Product Quality Signals
 
 Product judgment may consider:
@@ -161,8 +174,9 @@ Use a layered result:
 3. Plain-language explanation
 4. Dose and serving analysis
 5. Overlap and interaction cautions
-6. Evidence section
-7. Expert view
+6. Intake timing guidance
+7. Evidence section
+8. Expert view
 
 Example conclusion:
 
@@ -192,6 +206,7 @@ The default explanation should be easy to read. The expert view can expand:
 - Dose calculations
 - Interaction warnings and confidence
 - Parsing failures or missing data
+- Intake timing assumptions
 - Why the app reached the conclusion
 
 ## Evidence Sources
@@ -223,6 +238,7 @@ Included:
 - Session-only supplement and medicine input
 - Duplicate ingredient and total amount checks
 - Conservative interaction cautions
+- Practical intake timing guidance when relevant
 - Plain explanation plus expert view
 - Official-source and research-backed evidence model
 - Ad claim interpretation focused on meaningfulness, not just truth
