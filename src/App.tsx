@@ -1,5 +1,6 @@
 import { FormEvent, useMemo, useState } from "react";
 import { analyzeSupplement, Mode } from "./analysis";
+import { buildDsldSearchUrl, formatDsldSummary, normalizeDsldHits } from "./dsld";
 
 const modes: Array<{
   id: Mode;
@@ -11,9 +12,9 @@ const modes: Array<{
   {
     id: "product",
     title: "제품 링크 체크",
-    description: "쿠팡, iHerb, 네이버쇼핑 링크로 제품을 판단합니다.",
-    label: "상품 링크",
-    placeholder: "https://www.iherb.com/pr/...",
+    description: "제품명, 링크, 성분표로 실제 함량과 목적 적합성을 판단합니다.",
+    label: "상품 링크 또는 제품명",
+    placeholder: "예: 오메가3 1000mg 또는 https://www.iherb.com/pr/...",
   },
   {
     id: "goal",
@@ -33,19 +34,22 @@ const modes: Array<{
 
 const examples = {
   product: {
-    primaryInput: "https://www.iherb.com/pr/example-omega-3",
+    primaryInput: "오메가3 1000mg",
+    productDetails: "Supplement Facts: Fish Oil 1000 mg, EPA 400 mg, DHA 200 mg. Suggested use: 1 softgel daily.",
     goal: "눈 건조감",
     currentSupplements: "멀티비타민, 비타민 D",
     currentMedicines: "항응고제",
   },
   goal: {
     primaryInput: "눈 피로",
+    productDetails: "",
     goal: "",
     currentSupplements: "",
     currentMedicines: "",
   },
   ad: {
     primaryInput: "하루 한 캡슐로 온 가족 눈 건강을 관리하세요",
+    productDetails: "",
     goal: "눈 피로",
     currentSupplements: "",
     currentMedicines: "",
@@ -55,10 +59,12 @@ const examples = {
 function App() {
   const [mode, setMode] = useState<Mode>("product");
   const [primaryInput, setPrimaryInput] = useState("");
+  const [productDetails, setProductDetails] = useState("");
   const [goal, setGoal] = useState("");
   const [currentSupplements, setCurrentSupplements] = useState("");
   const [currentMedicines, setCurrentMedicines] = useState("");
   const [servingScenario, setServingScenario] = useState("라벨 권장량");
+  const [lookupStatus, setLookupStatus] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [expertOpen, setExpertOpen] = useState(false);
 
@@ -68,12 +74,13 @@ function App() {
     return analyzeSupplement({
       mode,
       primaryInput,
+      productDetails,
       goal,
       currentSupplements,
       currentMedicines,
       servingScenario,
     });
-  }, [currentMedicines, currentSupplements, goal, mode, primaryInput, servingScenario, submitted]);
+  }, [currentMedicines, currentSupplements, goal, mode, primaryInput, productDetails, servingScenario, submitted]);
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -84,9 +91,11 @@ function App() {
   const loadExample = () => {
     const example = examples[mode];
     setPrimaryInput(example.primaryInput);
+    setProductDetails(example.productDetails);
     setGoal(example.goal);
     setCurrentSupplements(example.currentSupplements);
     setCurrentMedicines(example.currentMedicines);
+    setLookupStatus("");
     setSubmitted(false);
     setExpertOpen(false);
   };
@@ -94,12 +103,46 @@ function App() {
   const switchMode = (nextMode: Mode) => {
     setMode(nextMode);
     setPrimaryInput("");
+    setProductDetails("");
     setGoal("");
     setCurrentSupplements("");
     setCurrentMedicines("");
     setServingScenario("라벨 권장량");
+    setLookupStatus("");
     setSubmitted(false);
     setExpertOpen(false);
+  };
+
+  const lookupDsld = async () => {
+    if (!primaryInput.trim()) {
+      setLookupStatus("먼저 제품명이나 링크를 입력해 주세요.");
+      return;
+    }
+
+    setLookupStatus("NIH 라벨 DB에서 비슷한 제품을 찾는 중입니다.");
+
+    try {
+      const response = await fetch(buildDsldSearchUrl(primaryInput), {
+        headers: { Accept: "application/json" },
+      });
+
+      if (!response.ok) throw new Error(`DSLD request failed: ${response.status}`);
+
+      const data = (await response.json()) as { hits?: Parameters<typeof normalizeDsldHits>[0] };
+      const summaries = normalizeDsldHits(data.hits ?? []);
+
+      if (summaries.length === 0) {
+        setLookupStatus("비슷한 라벨을 찾지 못했습니다. 성분표를 직접 붙여넣어 주세요.");
+        return;
+      }
+
+      setProductDetails((current) =>
+        [current, formatDsldSummary(summaries[0])].filter((value) => value.trim()).join("\n\n"),
+      );
+      setLookupStatus("가장 비슷한 NIH 라벨 후보를 성분표 입력칸에 추가했습니다.");
+    } catch {
+      setLookupStatus("NIH 라벨 DB 조회에 실패했습니다. 성분표를 직접 붙여넣어도 판단할 수 있습니다.");
+    }
   };
 
   return (
@@ -109,7 +152,7 @@ function App() {
           <p className="eyebrow">Supplement Check MVP</p>
           <h1 id="page-title">건강 기능식품, 사기 전에 판단하세요.</h1>
           <p className="hero-copy">
-            제품 링크, 목적, 광고 문구를 넣으면 함량과 근거, 중복 섭취, 섭취 시점을
+            제품명, 링크, 성분표, 광고 문구를 넣으면 함량과 근거, 중복 섭취, 섭취 시점을
             한 화면에서 확인합니다.
           </p>
         </div>
@@ -157,11 +200,32 @@ function App() {
                 onChange={(event) => setPrimaryInput(event.target.value)}
                 placeholder={activeMode.placeholder}
                 required
-                type={mode === "product" ? "url" : "text"}
+                type="text"
                 value={primaryInput}
               />
             )}
           </label>
+
+          {mode === "product" && (
+            <>
+              <div className="lookup-row">
+                <button className="ghost-button" onClick={lookupDsld} type="button">
+                  NIH 라벨 DB 조회
+                </button>
+                {lookupStatus && <p>{lookupStatus}</p>}
+              </div>
+
+              <label className="field">
+                <span>성분표/상품 설명</span>
+                <textarea
+                  onChange={(event) => setProductDetails(event.target.value)}
+                  placeholder="예: Fish Oil 1000 mg, EPA 400 mg, DHA 200 mg. 1 softgel daily."
+                  rows={6}
+                  value={productDetails}
+                />
+              </label>
+            </>
+          )}
 
           {mode !== "goal" && (
             <label className="field">
@@ -256,7 +320,7 @@ function App() {
         ) : (
           <section className="empty-panel">
             <h2>결과는 여기에 표시됩니다.</h2>
-            <p>지금은 실제 쇼핑몰 파싱 전 단계입니다. 사용자 테스트를 위해 판단 흐름과 결과 화면을 먼저 확인합니다.</p>
+            <p>제품명이나 링크만으로 부족하면 성분표를 붙여넣어 실제 함량 기준으로 판단할 수 있습니다.</p>
           </section>
         )}
       </section>
