@@ -1,5 +1,17 @@
 # Repository Guidelines
 
+## Agent Workflow Expectations
+
+Use Superpowers as the default workflow layer for this project. Before substantive work, check whether a Superpowers skill applies and follow it when relevant. In particular, use brainstorming before creative or feature-definition work, systematic debugging before bug fixes, test-driven development when implementing behavior, and verification before claiming work is complete.
+
+During brainstorming and planning, bring in the relevant gstack expert perspectives before settling on an implementation direction. Use the smallest useful set of reviewers for the task, such as CEO/product review for problem framing, design review for UX and visual decisions, engineering review for architecture and execution risk, and developer-experience review for tooling or contributor workflows. Summarize their concrete objections, tradeoffs, and recommendations in the plan rather than treating them as ceremonial approval.
+
+When creating a product or implementation plan, explicitly include the opinions of the gstack experts that participate in the planning phase. Capture each relevant expert's stance, concerns, and recommended changes before finalizing the plan, especially from CEO/product, design, engineering, and developer-experience perspectives when those domains are involved.
+
+After implementing security-sensitive changes, run a gstack CSO review before considering the work ready. Treat authentication, authorization, user health data, supplement databases, API keys, file uploads, external APIs, dependency changes, CI/CD, LLM prompts or tool calls, and data storage as security-sensitive. For small purely presentational changes, a full CSO pass is optional, but still run the normal verification workflow.
+
+When an agent makes a meaningful mistake, discovers a recurring failure mode, or fixes a problem that future agents are likely to repeat, document it with the Compound Engineering `ce-compound` workflow. Store durable learnings under `docs/solutions/` with searchable frontmatter so future work can find the lesson before repeating the same mistake.
+
 ## Project Structure & Module Organization
 
 This repository is currently a clean scaffold with no source files committed yet. As the project grows, keep the layout predictable:
